@@ -10,11 +10,12 @@ import {
   getOrderByContact // New function
 } from '../controllers/orderController.js';
 import admin from '../middlewares/admin.js';
+import { ensureGuestId } from '../middlewares/guestId.js';
 
 const router = express.Router();
 
 // Buyer creates an order
-router.post('/', createOrder);
+router.post('/', auth, createOrder);
 
 // For admin to retrieve all orders
 router.get('/', auth, admin, getAllOrders);
@@ -33,6 +34,6 @@ router.get('/:orderId', auth, getOrderById);
 router.put('/:orderId/status', auth, admin, updateOrderStatus);
 
 // Cancel an order (only if its status is 'Pending')
-router.delete('/:orderId/cancel', auth, cancelOrder);
+router.delete('/:orderId/cancel', auth, admin, cancelOrder);
 
 export default router;

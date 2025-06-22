@@ -5,31 +5,48 @@ import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 
 const router = express.Router();
+cloudinary.config();            // make sure your CLOUDINARY_URL is set
 
-// You can configure Cloudinary either manually or via CLOUDINARY_URL in your .env.
-cloudinary.config();
+const upload = multer();        // no destination: we’ll stream from buffer
 
-// Use multer to handle parsing the file from the request.
-const upload = multer();
-
-// POST /api/upload route – this route will receive one file keyed by "file"
-router.post("/", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No file provided" });
+/**
+ * POST /api/upload
+ * Accepts multiple files under the field name “files”
+ * Returns: { success: true, urls: [ ... ] }
+ */
+router.post("/", upload.array("files", 10), async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, message: "No files provided" });
   }
 
-  // Use a stream to upload because req.file.buffer is available from multer.
-  const uploadStream = cloudinary.uploader.upload_stream((error, result) => {
-    if (result) {
-      res.status(200).json({ success: true, url: result.secure_url });
-    } else {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  });
+  try {
+    // For each file, return a Promise that resolves to its secure_url
+    const uploadPromises = req.files.map(
+      (file) =>
+        new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: "your_folder_name" },
+            (error, result) => {
+              if (error) return reject(error);
+              resolve(result.secure_url);
+            }
+          );
+          streamifier.createReadStream(file.buffer).pipe(uploadStream);
+        })
+    );
 
-  streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+    // Wait for all uploads to finish
+    const urls = await Promise.all(uploadPromises);
+
+    return res.status(200).json({ success: true, urls });
+  } catch (err) {
+    console.error("Cloudinary upload error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Error uploading images" });
+  }
 });
-
-
 
 export default router;

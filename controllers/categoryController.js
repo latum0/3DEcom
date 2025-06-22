@@ -107,3 +107,23 @@ export const getActiveCategories = async (req, res) => {
         res.status(500).json({ message: 'Server error', error });
     }
 };
+
+
+// controllers/categoryController.js
+
+export const updateCategory = async (req, res) => {
+    try {
+        const { categoryId } = req.params;
+        const { name, isActive, customNameAllowed } = req.body;
+        const updated = await Category.findByIdAndUpdate(
+            categoryId,
+            { name, isActive, customNameAllowed },
+            { new: true }
+        );
+        if (!updated) return res.status(404).json({ message: 'Catégorie introuvable' });
+        res.json({ data: updated });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erreur lors de la mise à jour' });
+    }
+};

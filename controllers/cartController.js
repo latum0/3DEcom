@@ -1,72 +1,201 @@
 // controllers/cartController.js
-import Cart from '../models/Cart.js';
+import crypto from 'crypto'
+import Cart from '../models/Cart.js'    // adjust path if needed
 
+// Helper to pick the right filter
+const ownerFilter = (userId, guestId) =>
+  userId ? { user: userId } : { guestId }
 
 export const addToCart = async (req, res) => {
-  const { productId, quantity = 1 } = req.body;
-  const userId = req.user._id;
+  const { productId, quantity = 1, size, color, customName } = req.body
+  const userId = req.user?._id
+  let guestId = req.cookies.guestId
+
+  // 1) Ensure every visitor has a guestId
+  if (!userId && !guestId) {
+    guestId = crypto.randomUUID()
+    res.cookie('guestId', guestId, {
+      httpOnly: true,
+      path: '/',
+      maxAge: 1000 * 60 * 60 * 24 * 30,
+    })
+  }
 
   try {
-    let cart = await Cart.findOne({ user: userId }).populate('items.product', 'name price image');
-
-    if (!cart) {
-      cart = new Cart({
-        user: userId,
-        items: [{ product: productId, quantity }]
-      });
-    } else {
-      const existingItem = cart.items.find(item => item.product.toString() === productId);
-
-      if (existingItem) {
-        existingItem.quantity += parseInt(quantity);
-      } else {
-        cart.items.push({ product: productId, quantity });
+    // 2) On login, merge guest cart into user cart
+    if (userId && guestId) {
+      const guestCart = await Cart.findOne({ guestId })
+      if (guestCart) {
+        guestCart.user = userId
+        guestCart.guestId = undefined
+        await guestCart.save()
       }
+      res.clearCookie('guestId', { path: '/' })
+      guestId = undefined
     }
 
-    await cart.save();
-    await cart.populate('items.product', 'name price image'); // Corrigé ici
+    // 3) Lookup or create the cart for this owner
+    const filter = ownerFilter(userId, guestId)
+    let cart = await Cart.findOne(filter)
 
-    res.status(200).json(cart);
+    // set defaults
+    const selSize = size || 's'
+    const selColor = color || 'black'
+
+    if (!cart) {
+      // brand new cart
+      cart = await Cart.create({
+        ...(userId ? { user: userId } : { guestId }),
+        items: [{
+          product: productId,
+          quantity,
+          size: selSize,
+          color: selColor,
+          customName,
+        }],
+      })
+    } else {
+      // 4) Try to find an existing item with the same variant
+      const existing = cart.items.find(item => {
+        const pid = item.product._id
+          ? item.product._id.toString()
+          : item.product.toString()
+        return (
+          pid === productId &&
+          item.size === selSize &&
+          item.color === selColor &&
+          (item.customName || '') === (customName || '')
+        )
+      })
+
+      if (existing) {
+        // update quantity
+        existing.quantity = quantity
+      } else {
+        // add new variant
+        cart.items.push({
+          product: productId,
+          quantity,
+          size: selSize,
+          color: selColor,
+          customName,
+        })
+      }
+
+      await cart.save()
+    }
+
+    // 5) Populate and return, including category.customNameAllowed
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price image category',
+      populate: {
+        path: 'category',
+        select: 'customNameAllowed'
+      }
+    })
+
+    res.json(cart)
   } catch (err) {
-    console.error("Error in addToCart:", err.message);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error in addToCart:', err)
+    res.status(500).json({ error: err.message })
   }
-};
+}
 
 export const getCart = async (req, res) => {
-  const userId = req.user._id;
+  const userId = req.user?._id
+  const guestId = req.cookies.guestId
+
+  // merge upon login
+  if (userId && guestId) {
+    const guestCart = await Cart.findOne({ guestId })
+    if (guestCart) {
+      guestCart.user = userId
+      guestCart.guestId = undefined
+      await guestCart.save()
+    }
+    res.clearCookie('guestId', { path: '/' })
+  }
 
   try {
-    const cart = await Cart.findOne({ user: userId })
-      .populate('items.product', 'name price image');
+    const filter = ownerFilter(userId, guestId)
+    const cart = await Cart.findOne(filter)
 
-    if (!cart) return res.status(404).json({ error: 'Cart not found' });
+    if (!cart) {
+      return res.json({ items: [] })
+    }
 
-    res.status(200).json(cart);
+    // Populate product → category.customNameAllowed
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price image category',
+      populate: {
+        path: 'category',
+        select: 'customNameAllowed'
+      }
+    })
+
+    res.json(cart)
   } catch (err) {
-    console.error("Error in getCart:", err.message);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error in getCart:', err)
+    res.status(500).json({ error: err.message })
   }
-};
+}
 
 export const removeFromCart = async (req, res) => {
-  const { productId } = req.body;
-  const userId = req.user._id;
+  const userId = req.user?._id
+  const guestId = req.cookies.guestId
+  const { productId, size, color, customName } = req.body
 
   try {
-    const cart = await Cart.findOne({ user: userId });
+    const filter = ownerFilter(userId, guestId)
+    const cart = await Cart.findOne(filter)
+    if (!cart) return res.status(404).json({ error: 'Cart not found' })
 
-    if (!cart) return res.status(404).json({ error: 'Cart not found' });
+    cart.items = cart.items.filter(item => {
+      const pid = item.product._id
+        ? item.product._id.toString()
+        : item.product.toString()
+      // remove only the matching variant
+      return !(
+        pid === productId &&
+        item.size === (size || 's') &&
+        item.color === (color || 'black') &&
+        (item.customName || '') === (customName || '')
+      )
+    })
+    await cart.save()
 
-    cart.items = cart.items.filter(item => item.product.toString() !== productId);
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price image category',
+      populate: {
+        path: 'category',
+        select: 'customNameAllowed'
+      }
+    })
 
-    await cart.save();
-    await cart.populate('items.product', 'name price image');
-
-    res.status(200).json(cart);
+    res.json(cart)
   } catch (err) {
-    console.error("Error in removeFromCart:", err.message);
-    res.status(500).json({ error: 'Server error' });
+    console.error('Error in removeFromCart:', err)
+    res.status(500).json({ error: err.message })
   }
-};
+}
+
+export const clearCart = async (req, res) => {
+  const userId = req.user?._id
+  const guestId = req.cookies.guestId
+
+  try {
+    const filter = ownerFilter(userId, guestId)
+    const cart = await Cart.findOne(filter)
+    if (!cart) return res.status(404).json({ error: 'Cart not found' })
+
+    cart.items = []
+    await cart.save()
+    res.json({ items: [] })
+  } catch (err) {
+    console.error('Error in clearCart:', err)
+    res.status(500).json({ error: err.message })
+  }
+}

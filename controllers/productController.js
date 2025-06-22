@@ -33,7 +33,7 @@ export const getProductById = async (req, res) => {
 
     const product = await Product.findById(id)
       .populate("proposedBy", "name email")
-      .populate("category", "name description");
+      .populate("category", "name description customNameAllowed");
 
     if (!product) {
       return res

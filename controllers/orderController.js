@@ -6,78 +6,90 @@ import Order from '../models/Order.js';
  */
 export const createOrder = async (req, res) => {
   try {
-    console.log("Données reçues:", req.body); // Debug 1
+    const { items, shippingInfo, paymentMethod, guestDetails: bodyGuest } =
+      req.body
+    const isGuest = !req.user
 
-    const { items, shippingInfo, paymentMethod, guestDetails } = req.body;
-
-    // Validation approfondie
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      console.log("Erreur: Panier vide"); // Debug 2
-      return res.status(400).json({ error: "Le panier est vide" });
+    // 1) Validate items
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Le panier est vide' })
+    }
+    for (const it of items) {
+      if (
+        !it.product ||
+        !mongoose.Types.ObjectId.isValid(it.product) ||
+        !it.quantity ||
+        !it.priceAtPurchase ||
+        !it.size ||
+        !it.color
+      ) {
+        return res
+          .status(400)
+          .json({ error: 'Données de produit incomplètes.' })
+      }
     }
 
-    // Vérification des items
-    for (const item of items) {
-      if (!mongoose.Types.ObjectId.isValid(item.product)) {
-        console.log("Erreur: Product ID invalide", item.product); // Debug 3
-        return res.status(400).json({ error: `Product ID invalide: ${item.product}` });
-      }
-      if (!item.priceAtPurchase || isNaN(item.priceAtPurchase)) {
-        console.log("Erreur: Prix manquant ou invalide", item); // Debug 4
-        return res.status(400).json({ error: "Prix manquant ou invalide" });
-      }
+    // 2) Validate shippingInfo
+    if (
+      !shippingInfo ||
+      !shippingInfo.city ||
+      !shippingInfo.phone ||
+      (isGuest && !shippingInfo.email)
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Informations d'expédition incomplètes." })
     }
 
-    // Calcul du montant total
-    const totalAmount = items.reduce((total, item) => {
-      return total + (item.priceAtPurchase * item.quantity);
-    }, 0);
+    // 3) Build guestDetails if needed
+    let guestDetails = null
+    if (isGuest) {
+      if (
+        !bodyGuest ||
+        !bodyGuest.name ||
+        !(bodyGuest.email || bodyGuest.phone)
+      ) {
+        return res
+          .status(400)
+          .json({ error: 'Détails client invité incomplets.' })
+      }
+      guestDetails = bodyGuest
+    }
 
-    // Determine if the user is logged in or a guest
-    const isGuest = !req.user; // req.user is undefined for guests
+    // 4) Compute total
+    const totalAmount = items.reduce(
+      (sum, i) => sum + i.priceAtPurchase * i.quantity,
+      0
+    )
 
-    console.log("Création de la commande avec:", { // Debug 5
-      user: isGuest ? "Guest" : req.user._id,
-      items,
-      shippingInfo,
-      paymentMethod,
-      guestDetails,
-      totalAmount
-    });
-
-    // Create the order
+    // 5) Create & save
     const order = new Order({
-      user: isGuest ? null : req.user._id, // Null for guest orders
+      user: isGuest ? null : req.user._id,
       isGuest,
-      guestDetails: isGuest ? guestDetails : undefined, // Populate guest details only for guests
-      items: items.map(item => ({
-        product: item.product,
-        quantity: item.quantity,
-        priceAtPurchase: item.priceAtPurchase
+      guestDetails: isGuest ? guestDetails : undefined,
+      items: items.map((i) => ({
+        product: i.product,
+        quantity: i.quantity,
+        priceAtPurchase: i.priceAtPurchase,
+        size: i.size,
+        color: i.color,
+        customName: i.customName || null,
       })),
+      totalAmount,
       shippingInfo,
       paymentMethod,
-      totalAmount,
-      status: 'Pending'
-    });
+      status: 'Pending',
+    })
 
-    const savedOrder = await order.save();
-    console.log("Commande sauvegardée:", savedOrder._id); // Debug 6
-
-    res.status(201).json({
-      success: true,
-      orderId: savedOrder._id
-    });
-
-  } catch (error) {
-    console.error("Erreur complète:", error); // Debug 7
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack // Aide au debug
-    });
+    const saved = await order.save()
+    return res
+      .status(201)
+      .json({ success: true, orderId: saved._id, data: saved })
+  } catch (err) {
+    console.error('Error in createOrder:', err)
+    return res.status(500).json({ error: err.message })
   }
-};
-
+}
 /**
  * Get orders for the currently authenticated buyer.
  */
@@ -151,6 +163,7 @@ export const updateOrderStatus = async (req, res) => {
 /**
  * Cancel an order.
  */
+
 export const cancelOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -160,6 +173,7 @@ export const cancelOrder = async (req, res) => {
         message: "Invalid order ID"
       });
     }
+
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({
@@ -176,23 +190,29 @@ export const cancelOrder = async (req, res) => {
       });
     }
 
-    order.status = 'Cancelled';
-    await order.save();
-
-    await order.populate('user', 'name email')
+    // Update only the status field
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { status: 'Cancelled' },
+      { new: true }
+    )
+      .populate('user', 'name email')
       .populate('items.product', 'name price images');
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: order,
+      data: updatedOrder,
       message: "Order cancelled"
     });
   } catch (error) {
     console.error("Error cancelling order:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
   }
 };
-
 /**
  * Retrieve all orders.
  * For admin use.

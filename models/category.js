@@ -17,6 +17,12 @@ const categorySchema = new mongoose.Schema(
         isActive: {
             type: Boolean,
             default: true // Allows categories to be soft-deleted
+        },
+
+        // NEW: toggle custom name display per category
+        customNameAllowed: {
+            type: Boolean,
+            default: false
         }
     },
     {

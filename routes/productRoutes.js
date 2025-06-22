@@ -14,8 +14,8 @@ import admin from "../middlewares/admin.js";
 const router = express.Router();
 
 // Order here matters—specific routes must come before generic ones
-router.get("/", auth, admin, getProducts); // Get all products
-router.get("/:id", auth, admin, getProductById); // Get product by ID
+router.get("/", getProducts); // Get all products
+router.get("/:id", getProductById); // Get product by ID
 router.post("/", auth, admin, createProductAdmin); // Create a new product (admin only)
 router.put("/:id", auth, admin, updateProduct); // Update a product (admin only)
 router.delete("/:id", auth, admin, deleteProduct); // Delete a product (admin only)

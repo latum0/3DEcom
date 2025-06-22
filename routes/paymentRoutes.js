@@ -1,29 +1,31 @@
 import express from 'express';
 import Payment from '../models/Payment.js';
+import { auth } from '../middlewares/auth.js'
+import admin from '../middlewares/admin.js'
 
 const router = express.Router();
 
 // GET all payments
-router.get('/', async (req, res) => {
+router.get('/', auth, admin, async (req, res) => {
   try {
     const payments = await Payment.find()
       .sort({ transactionDate: -1 });
-    
+
     if (payments.length === 0) {
       return res.status(404).json({ message: 'Aucun paiement trouvé' });
     }
-    
+
     res.json(payments);
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Erreur serveur',
-      details: error.message 
+      details: error.message
     });
   }
 });
 
 // CREATE new payment
-router.post('/', async (req, res) => {
+router.post('/', auth, admin, async (req, res) => {
   try {
     const { vendor, amount, method, reference } = req.body;
 
@@ -50,9 +52,9 @@ router.post('/', async (req, res) => {
 
     res.status(201).json(savedPayment);
   } catch (error) {
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Erreur création paiement',
-      details: error.message 
+      details: error.message
     });
   }
 });

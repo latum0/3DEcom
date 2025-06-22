@@ -33,8 +33,9 @@ const userSchema = new Schema(
         country: String
       }
     },
-    phone: { type: String, required: true },
-    status: { type: String, enum: ['Actif', 'Inactif'], default: 'actif' }
+    phone: { type: String, required: false },
+    status: { type: String, enum: ['Actif', 'Inactif'], default: 'Inactif' },
+    refreshTokens: [{ type: String }]
   },
   { timestamps: true }
 );

@@ -1,11 +1,13 @@
 import express from 'express';
-import { auth } from '../middlewares/auth.js'; // Assurez-vous que ce middleware fonctionne
 import * as cartCtrl from '../controllers/cartController.js';
+import { ensureGuestId } from '../middlewares/guestId.js';
 
 const router = express.Router();
 
-router.post('/', auth, cartCtrl.addToCart); // Ajouter un produit
-router.get('/', auth, cartCtrl.getCart);    // Récupérer le panier
-router.delete('/', auth, cartCtrl.removeFromCart); // Supprimer un produit
+router.post('/', ensureGuestId, cartCtrl.addToCart);
+router.get('/', ensureGuestId, cartCtrl.getCart);
+router.delete('/', ensureGuestId, cartCtrl.removeFromCart);
+router.delete('/clear', ensureGuestId, cartCtrl.clearCart);
+
 
 export default router;

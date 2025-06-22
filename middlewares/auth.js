@@ -1,46 +1,53 @@
-import dotenv from "dotenv";
-dotenv.config();
+// middlewares/identifyUser.js
+import { v4 as uuidv4 } from 'uuid';
+import jwt from 'jsonwebtoken';
 
-import jwt from "jsonwebtoken";
-
+/**
+ * Identify middleware:
+ * - If valid JWT in Bearer or cookie, attaches req.user
+ * - Otherwise ensures a guestId cookie and leaves req.user undefined
+ */
 export const auth = (req, res, next) => {
-  const authHeader = req.header("Authorization");
+  const authHeader = req.header('Authorization');
+  let token = null;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ 
-      success: false,
-      message: "Authorization header missing or malformed"
-    });
+  // 1) Try cookie token
+  if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+  // 2) Try Bearer header
+  else if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
   }
 
-  const token = authHeader.split(" ")[1];
-  console.log("Token received:", token);
-  console.log("Using secret in auth middleware:", process.env.JWT_SECRET);
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("Decoded token in auth:", decoded);
-    
-    // Expect the token payload to be in the format: { user: { id, role } }
-    if (!decoded.user || !decoded.user.id) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid token format"
-      });
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.user && decoded.user.id) {
+        // Authenticated user
+        req.user = { _id: decoded.user.id, role: decoded.user.role };
+        // Remove any leftover guestId cookie
+        if (req.cookies.guestId) {
+          res.clearCookie('guestId', { path: '/', httpOnly: true });
+        }
+        return next();
+      }
+    } catch (err) {
+      console.warn('Invalid JWT in identifyUser:', err.message);
+      // fall through as guest
     }
-
-    // Attach user information to the request for use in subsequent middleware/controllers.
-    req.user = {
-      _id: decoded.user.id,
-      role: decoded.user.role
-    };
-
-    next();
-  } catch (err) {
-    console.error("Authentication error:", err);
-    const message = err.name === "TokenExpiredError" 
-      ? "Session expired. Please login again."
-      : "Invalid authentication token";
-    res.status(401).json({ success: false, message });
   }
+
+  // No valid token: treat as guest
+  if (!req.cookies.guestId) {
+    const newId = uuidv4();
+    res.cookie('guestId', newId, {
+      httpOnly: true,
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    req.cookies.guestId = newId;
+  }
+
+  next();
 };

@@ -1,7 +1,7 @@
 import mongoose from 'mongoose'
 const { Schema, model } = mongoose
 
-// Sub‐schema for guest details
+// Sub-schema for guest details
 const guestDetailsSchema = new Schema(
   {
     name: {
@@ -32,13 +32,50 @@ const guestDetailsSchema = new Schema(
   { _id: false }
 )
 
+// Sub-schema for order items (supports product or custom)
+const orderItemSchema = new Schema(
+  {
+    product: {
+      type: Schema.Types.ObjectId,
+      ref: 'Product',
+      required: function () {
+        // productId required when no customImage is provided
+        return !this.customImage
+      }
+    },
+    customImage: {
+      type: String, // URL or Base64-encoded image
+      required: function () {
+        // customImage required when ordering a custom product without an existing product
+        return !this.product
+      }
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    size: {
+      type: String,
+      enum: ['s', 'm', 'L'],
+      required: true,
+    },
+    color: {
+      type: String,
+      enum: ['black', 'White', 'Blue', 'Red', 'Green', 'Gray'],
+      required: true,
+    }
+  },
+  { _id: false }
+)
+
 // Main Order schema
 const orderSchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: false,
+      required: false, // not required for guests
     },
     isGuest: {
       type: Boolean,
@@ -50,36 +87,13 @@ const orderSchema = new Schema(
         return this.isGuest
       },
     },
-    items: [
-      {
-        product: {
-          type: Schema.Types.ObjectId,
-          ref: 'Product',
-          required: true,
-        },
-        quantity: {
-          type: Number,
-          required: true,
-          min: 1,
-        },
-        priceAtPurchase: {
-          type: Number,
-          required: true,
-        },
-        size: {
-          type: String,
-          required: true,
-        },
-        color: {
-          type: String,
-          required: true,
-        },
-        customName: {
-          type: String,
-          default: null,
-        },
-      },
-    ],
+    items: {
+      type: [orderItemSchema],
+      validate: [
+        items => items.length > 0,
+        'Order must have at least one item'
+      ]
+    },
     totalAmount: {
       type: Number,
       required: true,
@@ -94,7 +108,7 @@ const orderSchema = new Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['PayPal', 'CreditCard', 'CashOnDelivery'],
+      enum: ['PayPal', 'CarteEdahabia', 'CashOnDelivery'],
       required: true,
     },
     status: {

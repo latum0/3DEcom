@@ -7,7 +7,8 @@ import {
   updateOrderStatus,
   cancelOrder,
   getAllOrders,
-  getOrderByContact // New function
+  getOrderByContact, // New function
+  deleteAllOrders
 } from '../controllers/orderController.js';
 import admin from '../middlewares/admin.js';
 import { ensureGuestId } from '../middlewares/guestId.js';
@@ -35,5 +36,7 @@ router.put('/:orderId/status', auth, admin, updateOrderStatus);
 
 // Cancel an order (only if its status is 'Pending')
 router.delete('/:orderId/cancel', auth, admin, cancelOrder);
+
+router.delete('/all', deleteAllOrders)
 
 export default router;

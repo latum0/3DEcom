@@ -100,32 +100,41 @@ export const addToCart = async (req, res) => {
     console.error('Error in addToCart:', err)
     res.status(500).json({ error: err.message })
   }
+
+  console.log("addToCart – req.user:", req.user, "guestId:", req.cookies.guestId);
+  console.log("body:", req.body);
 }
 
 export const getCart = async (req, res) => {
-  const userId = req.user?._id
-  const guestId = req.cookies.guestId
-
-  // merge upon login
-  if (userId && guestId) {
-    const guestCart = await Cart.findOne({ guestId })
-    if (guestCart) {
-      guestCart.user = userId
-      guestCart.guestId = undefined
-      await guestCart.save()
-    }
-    res.clearCookie('guestId', { path: '/' })
-  }
+  const userId = req.user?._id;
+  let guestId = req.cookies.guestId;
 
   try {
-    const filter = ownerFilter(userId, guestId)
-    const cart = await Cart.findOne(filter)
-
-    if (!cart) {
-      return res.json({ items: [] })
+    // 1) Merge any existing guest‐cart into the just‐logged‐in user
+    if (userId && guestId) {
+      const guestCart = await Cart.findOne({ guestId });
+      if (guestCart) {
+        guestCart.user = userId;
+        guestCart.guestId = undefined;
+        await guestCart.save();
+      }
+      // clear the cookie *and* drop the local var
+      res.clearCookie('guestId', { path: '/' });
+      guestId = undefined;
     }
 
-    // Populate product → category.customNameAllowed
+    // 2) Build the correct filter *after* merge
+    const filter = ownerFilter(userId, guestId);
+
+    // 3) Fetch (or implicitly create) the cart
+    let cart = await Cart.findOne(filter);
+
+    // If no cart exists at all, give back an empty shape
+    if (!cart) {
+      return res.json({ items: [] });
+    }
+
+    // 4) Populate products → categories
     await cart.populate({
       path: 'items.product',
       select: 'name price image category',
@@ -133,14 +142,17 @@ export const getCart = async (req, res) => {
         path: 'category',
         select: 'customNameAllowed'
       }
-    })
+    });
 
-    res.json(cart)
+    // 5) Send it down
+    return res.json(cart);
+
   } catch (err) {
-    console.error('Error in getCart:', err)
-    res.status(500).json({ error: err.message })
+    console.error('Error in getCart:', err);
+    return res.status(500).json({ error: err.message });
   }
-}
+};
+
 
 export const removeFromCart = async (req, res) => {
   const userId = req.user?._id

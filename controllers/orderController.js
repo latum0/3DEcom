@@ -1,21 +1,19 @@
 import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 
-/**
- * Create a new order.
- */
+
+
 export const createOrder = async (req, res) => {
   try {
-    const { items, shippingInfo, paymentMethod, guestDetails: bodyGuest } = req.body;
-    const isGuest = !req.user;
+    const { items, shippingInfo, paymentMethod, guestDetails: bodyGuest } = req.body
+    const isGuest = !req.user
 
     // 1) Validate items
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Le panier est vide.' });
+      return res.status(400).json({ error: 'Le panier est vide.' })
     }
     for (const it of items) {
       if (it.product) {
-        // Existing product item: require valid product ID and priceAtPurchase
         if (
           !mongoose.Types.ObjectId.isValid(it.product) ||
           typeof it.priceAtPurchase !== 'number' ||
@@ -24,22 +22,27 @@ export const createOrder = async (req, res) => {
           !it.size ||
           !it.color
         ) {
-          return res.status(400).json({ error: 'Données de produit incomplètes.' });
+          return res
+            .status(400)
+            .json({ error: 'Données de produit incomplètes.' })
         }
       } else if (it.customImage) {
-        // Custom item: require image, quantity, size, color
         if (
           typeof it.customImage !== 'string' ||
           !it.quantity ||
           !it.size ||
           !it.color
         ) {
-          return res.status(400).json({ error: 'Données de produit personnalisées incomplètes.' });
+          return res
+            .status(400)
+            .json({ error: 'Données de produit personnalisées incomplètes.' })
         }
-        // Fill priceAtPurchase for custom items
-        it.priceAtPurchase = typeof it.priceAtPurchase === 'number' ? it.priceAtPurchase : 0;
+        it.priceAtPurchase =
+          typeof it.priceAtPurchase === 'number' ? it.priceAtPurchase : 0
       } else {
-        return res.status(400).json({ error: 'Chaque article doit avoir un produit ou une image personnalisée.' });
+        return res
+          .status(400)
+          .json({ error: 'Chaque article doit avoir un produit ou une image personnalisée.' })
       }
     }
 
@@ -50,27 +53,27 @@ export const createOrder = async (req, res) => {
       !shippingInfo.phone ||
       (isGuest && !shippingInfo.email)
     ) {
-      return res.status(400).json({ error: "Informations d'expédition incomplètes." });
+      return res
+        .status(400)
+        .json({ error: "Informations d'expédition incomplètes." })
     }
 
     // 3) Build guestDetails if needed
-    let guestDetails = null;
+    let guestDetails = null
     if (isGuest) {
-      if (
-        !bodyGuest ||
-        !bodyGuest.name ||
-        !(bodyGuest.email || bodyGuest.phone)
-      ) {
-        return res.status(400).json({ error: 'Détails client invité incomplets.' });
+      if (!bodyGuest || !bodyGuest.name || !(bodyGuest.email || bodyGuest.phone)) {
+        return res
+          .status(400)
+          .json({ error: 'Détails client invité incomplets.' })
       }
-      guestDetails = bodyGuest;
+      guestDetails = bodyGuest
     }
 
     // 4) Compute total
     const totalAmount = items.reduce(
       (sum, i) => sum + i.priceAtPurchase * i.quantity,
       0
-    );
+    )
 
     // 5) Create & save
     const order = new Order({
@@ -84,22 +87,23 @@ export const createOrder = async (req, res) => {
         priceAtPurchase: i.priceAtPurchase,
         size: i.size,
         color: i.color,
-        customName: i.customName || null,
+        customName: i.customName || null,       // ← make sure we map customName
       })),
       totalAmount,
       shippingInfo,
       paymentMethod,
       status: 'Pending',
-    });
+    })
 
-    const saved = await order.save();
-    return res.status(201).json({ success: true, orderId: saved._id, data: saved });
+    const saved = await order.save()
+    return res
+      .status(201)
+      .json({ success: true, orderId: saved._id, data: saved })
   } catch (err) {
-    console.error('Error in createOrder:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('Error in createOrder:', err)
+    return res.status(500).json({ error: err.message })
   }
-};
-
+}
 /**
  * Get orders for the currently authenticated buyer.
  */

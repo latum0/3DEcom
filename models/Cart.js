@@ -6,7 +6,7 @@ const cartItemSchema = new Schema({
   quantity: { type: Number, default: 1, required: true },
   size: { type: String, required: false, default: 's' },
   color: { type: String, required: false, default: 'black' },
-  customName: { type: String, require: true },
+  customName: { type: String, required: false },
 });
 
 const cartSchema = new Schema({

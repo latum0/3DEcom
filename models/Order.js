@@ -1,27 +1,13 @@
+// src/models/Order.js
 import mongoose from 'mongoose'
 const { Schema, model } = mongoose
 
 // Sub-schema for guest details
 const guestDetailsSchema = new Schema(
   {
-    name: {
-      type: String,
-      required: function () {
-        return this.parent().isGuest
-      },
-    },
-    email: {
-      type: String,
-      required: function () {
-        return this.parent().isGuest
-      },
-    },
-    phone: {
-      type: String,
-      required: function () {
-        return this.parent().isGuest
-      },
-    },
+    name: { type: String, required: function () { return this.parent().isGuest } },
+    email: { type: String, required: function () { return this.parent().isGuest } },
+    phone: { type: String, required: function () { return this.parent().isGuest } },
     address: {
       street: String,
       city: String,
@@ -32,39 +18,38 @@ const guestDetailsSchema = new Schema(
   { _id: false }
 )
 
-// Sub-schema for order items (supports product or custom)
+// Sub-schema for order items (supports product or custom) – note customName added
 const orderItemSchema = new Schema(
   {
     product: {
       type: Schema.Types.ObjectId,
       ref: 'Product',
-      required: function () {
-        // productId required when no customImage is provided
-        return !this.customImage
-      }
+      required: function () { return !this.customImage },
     },
     customImage: {
-      type: String, // URL or Base64-encoded image
-      required: function () {
-        // customImage required when ordering a custom product without an existing product
-        return !this.product
-      }
+      type: String,
+      required: function () { return !this.product },
     },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
+    quantity: { type: Number, required: true, min: 1 },
     size: {
       type: String,
-      enum: ['s', 'm', 'L'],
+      lowercase: true,
+      enum: ['s', 'm', 'l'],
       required: true,
     },
     color: {
       type: String,
-      enum: ['black', 'White', 'Blue', 'Red', 'Green', 'Gray'],
+      lowercase: true,
+      enum: ['black', 'white', 'blue', 'red', 'green', 'gray'],
       required: true,
-    }
+    },
+    customName: {                         // ← new field here
+      type: String,
+      required: false,
+      default: null,
+      maxlength: 50,
+      trim: true,
+    },
   },
   { _id: false }
 )
@@ -75,29 +60,20 @@ const orderSchema = new Schema(
     user: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: false, // not required for guests
     },
-    isGuest: {
-      type: Boolean,
-      default: false,
-    },
+    isGuest: { type: Boolean, default: false },
     guestDetails: {
       type: guestDetailsSchema,
-      required: function () {
-        return this.isGuest
-      },
+      required: function () { return this.isGuest },
     },
     items: {
       type: [orderItemSchema],
       validate: [
-        items => items.length > 0,
-        'Order must have at least one item'
-      ]
+        (items) => items.length > 0,
+        'Order must have at least one item',
+      ],
     },
-    totalAmount: {
-      type: Number,
-      required: true,
-    },
+    totalAmount: { type: Number, required: true },
     shippingInfo: {
       street: String,
       city: String,

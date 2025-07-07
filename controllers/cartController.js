@@ -18,6 +18,8 @@ export const addToCart = async (req, res) => {
       httpOnly: true,
       path: '/',
       maxAge: 1000 * 60 * 60 * 24 * 30,
+      sameSite: 'none',   // allow cross‑site
+      secure: true,
     })
   }
 
@@ -30,7 +32,11 @@ export const addToCart = async (req, res) => {
         guestCart.guestId = undefined
         await guestCart.save()
       }
-      res.clearCookie('guestId', { path: '/' })
+      res.clearCookie('guestId', {
+        path: '/',
+        sameSite: 'none',   // allow cross‑site
+        secure: true,
+      })
       guestId = undefined
     }
 

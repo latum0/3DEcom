@@ -18,7 +18,7 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: "https://neop3d.onrender.com/",
   credentials: true
 }));
 
